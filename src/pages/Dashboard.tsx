@@ -224,7 +224,6 @@ const Dashboard = () => {
               icon={<Phone className="h-6 w-6" />}
               trend={trends.calls}
               trendLabel="vs prev"
-              variant="primary"
             />
             <KPICard
               title="Meetings Set"
@@ -246,7 +245,6 @@ const Dashboard = () => {
               icon={<Target className="h-6 w-6" />}
               trend={trends.closes}
               trendLabel="vs prev"
-              variant="accent"
             />
           </div>
         )}
