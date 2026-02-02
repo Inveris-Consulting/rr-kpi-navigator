@@ -8,34 +8,42 @@ import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import AddKPI from "./pages/AddKPI";
 import History from "./pages/History";
-import Users from "./pages/Users";
+
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
 // Protected route wrapper
 const ProtectedRoute = ({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) => {
-  const { user, isAdmin } = useAuth();
-  
+  const { user, isAdmin, loading } = useAuth();
+
+  if (loading) {
+    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+  }
+
   if (!user) {
     return <Navigate to="/login" replace />;
   }
-  
+
   if (adminOnly && !isAdmin) {
     return <Navigate to="/" replace />;
   }
-  
+
   return <>{children}</>;
 };
 
 // Public route wrapper (redirects to dashboard if logged in)
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user } = useAuth();
-  
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+  }
+
   if (user) {
     return <Navigate to="/" replace />;
   }
-  
+
   return <>{children}</>;
 };
 
@@ -62,11 +70,7 @@ const AppRoutes = () => {
           <History />
         </ProtectedRoute>
       } />
-      <Route path="/users" element={
-        <ProtectedRoute adminOnly>
-          <Users />
-        </ProtectedRoute>
-      } />
+
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

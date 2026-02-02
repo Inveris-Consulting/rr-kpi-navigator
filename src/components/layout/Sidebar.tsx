@@ -1,10 +1,10 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
-import { 
-  LayoutDashboard, 
-  Plus, 
-  ClipboardList, 
+import {
+  LayoutDashboard,
+  Plus,
+  ClipboardList,
   LogOut,
   Users
 } from 'lucide-react';
@@ -21,18 +21,14 @@ const Sidebar = () => {
     { path: '/history', label: 'View History', icon: ClipboardList },
   ];
 
-  if (isAdmin) {
-    navItems.push({ path: '/users', label: 'Manage Users', icon: Users });
-  }
-
   return (
-    <aside className="w-64 min-h-screen gradient-sidebar flex flex-col">
+    <aside className="w-64 h-screen sticky top-0 gradient-sidebar flex flex-col shrink-0">
       {/* Logo */}
       <div className="p-6 border-b border-sidebar-border">
         <Link to="/" className="flex items-center gap-3">
-          <img 
-            src={logoWhite} 
-            alt="Rent and Recruit" 
+          <img
+            src={logoWhite}
+            alt="Rent and Recruit"
             className="h-10 w-auto"
           />
           <div className="flex flex-col">

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import MainLayout from '@/components/layout/MainLayout';
 import FilterBar from '@/components/dashboard/FilterBar';
@@ -12,8 +12,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { getKPIsByDateRange, users } from '@/lib/mockData';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
+import { KPIEntry } from '@/lib/mockData';
+
+interface HistoryEntry extends KPIEntry {
+  userName?: string;
+}
 
 const History = () => {
   const { user, isAdmin } = useAuth();
@@ -21,18 +27,48 @@ const History = () => {
   const [selectedUser, setSelectedUser] = useState(isAdmin ? 'all' : user?.id || '');
   const [groupBy, setGroupBy] = useState<'day' | 'week' | 'month'>('day');
 
-  const entries = useMemo(() => {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - parseInt(selectedPeriod));
-    
-    const userId = selectedUser === 'all' ? undefined : selectedUser;
-    return getKPIsByDateRange(startDate, endDate, userId);
-  }, [selectedPeriod, selectedUser]);
+  const { data: entries = [], isLoading } = useQuery({
+    queryKey: ['kpiHistory', selectedPeriod, selectedUser],
+    queryFn: async () => {
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - parseInt(selectedPeriod));
 
-  const getUserName = (userId: string) => {
-    return users.find(u => u.id === userId)?.name || 'Unknown';
-  };
+      let query = supabase
+        .from('kpi_entries')
+        .select('*, users(name)')
+        .gte('date', startDate.toISOString().split('T')[0])
+        .lte('date', endDate.toISOString().split('T')[0])
+        .order('date', { ascending: false });
+
+      if (selectedUser !== 'all') {
+        const uid = selectedUser || user?.id;
+        query = query.eq('user_id', uid);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      return (data || []).map((item: any) => ({
+        id: item.id,
+        userId: item.user_id,
+        userName: item.users?.name || 'Unknown',
+        date: item.date,
+        callsMade: item.calls_made,
+        meetingsSet: item.meetings_set,
+        meetingsCompleted: item.meetings_completed,
+        closes: item.closes,
+        openRequisitions: item.open_requisitions,
+        reqCloseRate: item.req_close_rate,
+        vipList: item.vip_list || 0,
+        createdAt: item.created_at
+      })) as HistoryEntry[];
+    },
+    enabled: !!user,
+  });
+
+  // Helper not needed anymore as we have userName
+  // const getUserName = ...
 
   return (
     <MainLayout>
@@ -78,8 +114,8 @@ const History = () => {
                     <TableHead className="text-right font-semibold">Completed</TableHead>
                     <TableHead className="text-right font-semibold">Closes</TableHead>
                     <TableHead className="text-right font-semibold">Open Reqs</TableHead>
+                    <TableHead className="text-right font-semibold">Vip List</TableHead>
                     <TableHead className="text-right font-semibold">Close Rate</TableHead>
-                    <TableHead className="text-right font-semibold">PCL</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -91,7 +127,7 @@ const History = () => {
                       {isAdmin && (
                         <TableCell>
                           <Badge variant="outline" className="font-normal">
-                            {getUserName(entry.userId)}
+                            {entry.userName}
                           </Badge>
                         </TableCell>
                       )}
@@ -102,22 +138,28 @@ const History = () => {
                         {entry.closes}
                       </TableCell>
                       <TableCell className="text-right">{entry.openRequisitions}</TableCell>
+                      <TableCell className="text-right">{entry.vipList}</TableCell>
                       <TableCell className="text-right">
-                        <Badge 
+                        <Badge
                           variant={entry.reqCloseRate >= 20 ? 'default' : 'secondary'}
                           className={entry.reqCloseRate >= 20 ? 'bg-success' : ''}
                         >
                           {entry.reqCloseRate}%
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">{entry.pcl}%</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </div>
-            
-            {entries.length === 0 && (
+
+            {isLoading && (
+              <div className="text-center py-12 text-muted-foreground">
+                Loading history data...
+              </div>
+            )}
+
+            {entries.length === 0 && !isLoading && (
               <div className="text-center py-12 text-muted-foreground">
                 No entries found for the selected period.
               </div>

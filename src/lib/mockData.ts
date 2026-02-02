@@ -17,7 +17,7 @@ export interface KPIEntry {
   closes: number;
   openRequisitions: number;
   reqCloseRate: number;
-  pcl: number;
+  vipList: number;
   createdAt: string;
 }
 
@@ -31,15 +31,15 @@ export const users: User[] = [
 const generateMockData = (): KPIEntry[] => {
   const entries: KPIEntry[] = [];
   const today = new Date();
-  
+
   for (let i = 0; i < 180; i++) {
     const date = new Date(today);
     date.setDate(date.getDate() - i);
     const dateStr = date.toISOString().split('T')[0];
-    
+
     // Skip weekends for more realistic data
     if (date.getDay() === 0 || date.getDay() === 6) continue;
-    
+
     // Generate data for both users
     ['1', '2'].forEach(userId => {
       const callsMade = Math.floor(Math.random() * 30) + 15;
@@ -49,7 +49,7 @@ const generateMockData = (): KPIEntry[] => {
       const openRequisitions = Math.floor(Math.random() * 15) + 5;
       const reqCloseRate = parseFloat((closes / (openRequisitions || 1) * 100).toFixed(1));
       const pcl = parseFloat((closes / (callsMade || 1) * 100).toFixed(2));
-      
+
       entries.push({
         id: `${userId}-${dateStr}`,
         userId,
@@ -65,13 +65,13 @@ const generateMockData = (): KPIEntry[] => {
       });
     });
   }
-  
+
   return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 };
 
 export const kpiEntries = generateMockData();
 
-export const getKPIsByUser = (userId: string) => 
+export const getKPIsByUser = (userId: string) =>
   kpiEntries.filter(entry => entry.userId === userId);
 
 export const getKPIsByDateRange = (startDate: Date, endDate: Date, userId?: string) => {
@@ -90,7 +90,7 @@ export const getRecentEntries = (limit: number = 10, userId?: string) => {
 
 export const aggregateKPIs = (entries: KPIEntry[]) => {
   if (entries.length === 0) return null;
-  
+
   return {
     totalCalls: entries.reduce((sum, e) => sum + e.callsMade, 0),
     totalMeetingsSet: entries.reduce((sum, e) => sum + e.meetingsSet, 0),
@@ -112,14 +112,14 @@ export const getChartData = (entries: KPIEntry[], groupBy: 'day' | 'week' | 'mon
       closes: e.closes,
     })).reverse();
   }
-  
+
   // Group by week or month
   const groups = new Map<string, KPIEntry[]>();
-  
+
   entries.forEach(entry => {
     const date = new Date(entry.date);
     let key: string;
-    
+
     if (groupBy === 'week') {
       const weekStart = new Date(date);
       weekStart.setDate(date.getDate() - date.getDay());
@@ -127,11 +127,11 @@ export const getChartData = (entries: KPIEntry[], groupBy: 'day' | 'week' | 'mon
     } else {
       key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     }
-    
+
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(entry);
   });
-  
+
   return Array.from(groups.entries()).map(([date, groupEntries]) => ({
     date,
     calls: groupEntries.reduce((sum, e) => sum + e.callsMade, 0),

@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { CalendarIcon, Save, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/supabase';
 
 interface KPIFormData {
   date: Date;
@@ -20,6 +21,7 @@ interface KPIFormData {
   meetingsCompleted: string;
   closes: string;
   openRequisitions: string;
+  vipList: string;
 }
 
 const AddKPI = () => {
@@ -33,6 +35,7 @@ const AddKPI = () => {
     meetingsCompleted: '',
     closes: '',
     openRequisitions: '',
+    vipList: '',
   });
 
   const handleInputChange = (field: keyof KPIFormData) => (
@@ -52,29 +55,45 @@ const AddKPI = () => {
       meetingsCompleted: '',
       closes: '',
       openRequisitions: '',
+      vipList: '',
     });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
+
     setIsSubmitting(true);
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      // Prepare data for Supabase
+      const payload = {
+        user_id: user.id,
+        date: format(formData.date, 'yyyy-MM-dd'),
+        calls_made: parseInt(formData.callsMade) || 0,
+        meetings_set: parseInt(formData.meetingsSet) || 0,
+        meetings_completed: parseInt(formData.meetingsCompleted) || 0,
+        closes: parseInt(formData.closes) || 0,
+        open_requisitions: parseInt(formData.openRequisitions) || 0,
+        vip_list: parseInt(formData.vipList) || 0,
+      };
 
-    // Calculate derived values
-    const closes = parseInt(formData.closes) || 0;
-    const openReqs = parseInt(formData.openRequisitions) || 1;
-    const calls = parseInt(formData.callsMade) || 1;
-    const reqCloseRate = ((closes / openReqs) * 100).toFixed(1);
-    const pcl = ((closes / calls) * 100).toFixed(2);
+      const { error } = await supabase
+        .from('kpi_entries')
+        .insert(payload);
 
-    toast.success('KPI Entry Saved!', {
-      description: `Close Rate: ${reqCloseRate}% | PCL: ${pcl}%`,
-    });
+      if (error) throw error;
 
-    setIsSubmitting(false);
-    navigate('/');
+      toast.success('KPI Entry Saved!');
+      navigate('/');
+    } catch (error: any) {
+      console.error('Error saving KPI:', error);
+      toast.error('Failed to save entry', {
+        description: error.message,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const inputFields = [
@@ -83,6 +102,7 @@ const AddKPI = () => {
     { id: 'meetingsCompleted', label: 'Meetings Completed', placeholder: 'e.g., 3' },
     { id: 'closes', label: 'Closes', placeholder: 'e.g., 1' },
     { id: 'openRequisitions', label: 'Open Requisitions', placeholder: 'e.g., 10' },
+    { id: 'vipList', label: 'Vip List', placeholder: 'e.g., 2' },
   ];
 
   return (
@@ -101,7 +121,7 @@ const AddKPI = () => {
           <CardHeader>
             <CardTitle>KPI Entry for {user?.name}</CardTitle>
             <CardDescription>
-              Fill in your metrics for the selected date. Close Rate and PCL will be calculated automatically.
+              Fill in your metrics for the selected date.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -157,17 +177,11 @@ const AddKPI = () => {
               {formData.closes && formData.openRequisitions && (
                 <div className="p-4 rounded-xl bg-secondary/50 space-y-2">
                   <p className="text-sm font-medium text-muted-foreground">Calculated Values</p>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4">
                     <div>
                       <p className="text-xs text-muted-foreground">Req. Close Rate</p>
                       <p className="text-lg font-bold text-primary">
                         {((parseInt(formData.closes) / parseInt(formData.openRequisitions || '1')) * 100).toFixed(1)}%
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">PCL</p>
-                      <p className="text-lg font-bold text-primary">
-                        {((parseInt(formData.closes) / parseInt(formData.callsMade || '1')) * 100).toFixed(2)}%
                       </p>
                     </div>
                   </div>

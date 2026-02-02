@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { KPIEntry, users } from '@/lib/mockData';
 import { format } from 'date-fns';
 import { Phone, Calendar, CheckCircle, Target } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface RecentEntriesProps {
   entries: KPIEntry[];
@@ -27,7 +28,7 @@ const RecentEntries = ({ entries, showUser = true }: RecentEntriesProps) => {
       <CardContent>
         <div className="space-y-4">
           {entries.map((entry) => (
-            <div 
+            <div
               key={entry.id}
               className="flex items-center gap-4 p-4 rounded-xl bg-secondary/50 hover:bg-secondary transition-colors"
             >
@@ -43,22 +44,45 @@ const RecentEntries = ({ entries, showUser = true }: RecentEntriesProps) => {
                   )}
                 </div>
                 <div className="grid grid-cols-4 gap-3 text-sm">
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    <Phone className="h-3.5 w-3.5" />
-                    <span className="font-medium text-foreground">{entry.callsMade}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    <Calendar className="h-3.5 w-3.5" />
-                    <span className="font-medium text-foreground">{entry.meetingsSet}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    <CheckCircle className="h-3.5 w-3.5" />
-                    <span className="font-medium text-foreground">{entry.meetingsCompleted}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    <Target className="h-3.5 w-3.5" />
-                    <span className="font-medium text-foreground">{entry.closes}</span>
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center gap-1.5 text-muted-foreground cursor-help">
+                        <Phone className="h-3.5 w-3.5" />
+                        <span className="font-medium text-foreground">{entry.callsMade}</span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>Calls Made</TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center gap-1.5 text-muted-foreground cursor-help">
+                        <Calendar className="h-3.5 w-3.5" />
+                        <span className="font-medium text-foreground">{entry.meetingsSet}</span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>Meetings Set</TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center gap-1.5 text-muted-foreground cursor-help">
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        <span className="font-medium text-foreground">{entry.meetingsCompleted}</span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>Meetings Completed</TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center gap-1.5 text-muted-foreground cursor-help">
+                        <Target className="h-3.5 w-3.5" />
+                        <span className="font-medium text-foreground">{entry.closes}</span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>Closes</TooltipContent>
+                  </Tooltip>
                 </div>
               </div>
               <div className="text-right">
