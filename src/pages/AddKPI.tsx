@@ -30,12 +30,12 @@ const AddKPI = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<KPIFormData>({
     date: new Date(),
-    callsMade: '',
-    meetingsSet: '',
-    meetingsCompleted: '',
-    closes: '',
-    openRequisitions: '',
-    vipList: '',
+    callsMade: '0',
+    meetingsSet: '0',
+    meetingsCompleted: '0',
+    closes: '0',
+    openRequisitions: '0',
+    vipList: '0',
   });
 
   const handleInputChange = (field: keyof KPIFormData) => (
@@ -50,12 +50,12 @@ const AddKPI = () => {
   const handleReset = () => {
     setFormData({
       date: new Date(),
-      callsMade: '',
-      meetingsSet: '',
-      meetingsCompleted: '',
-      closes: '',
-      openRequisitions: '',
-      vipList: '',
+      callsMade: '0',
+      meetingsSet: '0',
+      meetingsCompleted: '0',
+      closes: '0',
+      openRequisitions: '0',
+      vipList: '0',
     });
   };
 
