@@ -6,7 +6,8 @@ import {
   Plus,
   ClipboardList,
   LogOut,
-  Users
+  Users,
+  DollarSign
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import logoWhite from '@/assets/rr_logo_white.webp';
@@ -19,6 +20,7 @@ const Sidebar = () => {
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/add-kpi', label: 'Add KPI Entry', icon: Plus },
     { path: '/history', label: 'View History', icon: ClipboardList },
+    { path: '/job-costs', label: 'Job Costs', icon: DollarSign, adminOnly: true },
   ];
 
   return (
@@ -42,6 +44,7 @@ const Sidebar = () => {
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1">
         {navItems.map((item) => {
+          if (item.adminOnly && !isAdmin) return null;
           const isActive = location.pathname === item.path;
           return (
             <Link

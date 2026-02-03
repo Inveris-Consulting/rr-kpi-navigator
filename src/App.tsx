@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import AddKPI from "./pages/AddKPI";
 import History from "./pages/History";
+import JobCosts from "./pages/JobCosts";
 
 import NotFound from "./pages/NotFound";
 
@@ -68,6 +69,11 @@ const AppRoutes = () => {
       <Route path="/history" element={
         <ProtectedRoute>
           <History />
+        </ProtectedRoute>
+      } />
+      <Route path="/job-costs" element={
+        <ProtectedRoute adminOnly>
+          <JobCosts />
         </ProtectedRoute>
       } />
 
