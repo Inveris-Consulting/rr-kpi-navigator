@@ -3,7 +3,7 @@ import { useEmployeesWithRates, useUpdateEmployeeRate } from '@/hooks/useCosts';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { format, eachMonthOfInterval, subMonths } from 'date-fns';
+import { format, eachMonthOfInterval, subMonths, isSameMonth } from 'date-fns';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -94,7 +94,16 @@ const EmployeeHoursAdjustment = ({ adjustedHours, setAdjustedHours }: Props) => 
                         {eachMonthOfInterval({
                             start: subMonths(new Date(), 24),
                             end: new Date(new Date().getFullYear() + 1, 11, 31)
-                        }).reverse().map(date => {
+                        }).reverse().filter(date => {
+                            const monthStr = format(date, 'yyyy-MM-01');
+                            // Show current month, or months with adjustments, or months implied to have data?
+                            // For adjustments, showing months with existing adjustments makes sense.
+                            // Also it's nice to be able to add adjustments for current/future months.
+                            // Let's filter to: Current month, Last Month, or months with adjustments.
+                            const hasAdjustments = adjustedHours && adjustedHours[monthStr] && Object.keys(adjustedHours[monthStr]).length > 0;
+                            const isCurrentOrLastMonth = isSameMonth(date, new Date()) || isSameMonth(date, subMonths(new Date(), 1));
+                            return hasAdjustments || isCurrentOrLastMonth;
+                        }).map(date => {
                             const value = format(date, 'yyyy-MM');
                             const label = format(date, 'MMMM yyyy');
                             return (

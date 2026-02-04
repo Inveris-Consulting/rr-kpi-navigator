@@ -99,11 +99,38 @@ const CostOverview = ({ adjustedHours }: Props) => {
         return <div className="p-8 text-center text-red-500">Error loading cost data. Please try refreshing.</div>;
     }
 
-    const latestMonth = formattedData[formattedData.length - 1] || {
-        total_cost: 0,
-        cost_per_job: 0,
-        open_jobs_count: 0
-    };
+    const aggregatedData = useMemo(() => {
+        if (formattedData.length === 0) return { total_cost: 0, cost_per_job: 0, open_jobs_count: 0 };
+
+        const totalCost = formattedData.reduce((acc, curr) => acc + curr.total_cost, 0);
+        // Average cost per job across the months that have data
+        // Filter out months with 0 jobs to avoid skewing average with empty months if desired?
+        // User said: "trazer o valor total e a média respectivamente do período selecionado"
+        // Let's assume average of the monthly "cost per job" metrics.
+        const monthsWithJobs = formattedData.filter(d => d.open_jobs_count > 0);
+        const avgCostPerJob = monthsWithJobs.length > 0
+            ? monthsWithJobs.reduce((acc, curr) => acc + curr.cost_per_job, 0) / monthsWithJobs.length
+            : 0;
+
+        // For the open jobs count display, maybe average open jobs? or latest?
+        // The card says "open jobs" at the bottom. Showing latest is probably least confusing, or sum? 
+        // Sum of open jobs over months doesn't make sense (same job counted multiple times).
+        // Let's show the *Average* Open Jobs count or just keep the latest?
+        // Let's use the average Number of Open Jobs for the period to go with the Average Cost.
+        const avgOpenJobs = monthsWithJobs.length > 0
+            ? Math.round(monthsWithJobs.reduce((acc, curr) => acc + curr.open_jobs_count, 0) / monthsWithJobs.length)
+            : 0;
+
+        return {
+            total_cost: totalCost,
+            cost_per_job: avgCostPerJob,
+            open_jobs_count: avgOpenJobs
+        };
+    }, [formattedData]);
+
+    const periodLabel = timeRange === 'custom'
+        ? format(new Date(selectedMonth + '-01'), 'MMMM yyyy')
+        : timeRange === '12months' ? 'Last 12 Months' : 'Last 6 Months';
 
     const CustomTooltip = ({ active, payload, label }: any) => {
         if (active && payload && payload.length) {
@@ -129,7 +156,7 @@ const CostOverview = ({ adjustedHours }: Props) => {
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center bg-card p-4 rounded-lg border shadow-sm">
-                <h3 className="text-lg font-medium">Evolution</h3>
+                <h3 className="text-lg font-medium"></h3>
                 <div className="flex gap-2">
                     {timeRange === 'custom' && (
                         <Select value={selectedMonth} onValueChange={setSelectedMonth}>
@@ -140,7 +167,14 @@ const CostOverview = ({ adjustedHours }: Props) => {
                                 {eachMonthOfInterval({
                                     start: subMonths(new Date(), 24),
                                     end: new Date(new Date().getFullYear() + 1, 11, 31)
-                                }).reverse().map(date => {
+                                }).reverse().filter(date => {
+                                    const monthStr = format(date, 'yyyy-MM-01');
+                                    // Check if we have cost data or adjustment data for this month
+                                    const hasJobCosts = jobCosts?.some(c => isSameMonth(parseISO(c.cost_date), date));
+                                    const hasAdjustments = adjustedHours && adjustedHours[monthStr] && Object.keys(adjustedHours[monthStr]).length > 0;
+                                    const isCurrentMonth = isSameMonth(date, new Date());
+                                    return hasJobCosts || hasAdjustments || isCurrentMonth;
+                                }).map(date => {
                                     const value = format(date, 'yyyy-MM');
                                     const label = format(date, 'MMMM yyyy'); // English default
                                     return (
@@ -168,26 +202,26 @@ const CostOverview = ({ adjustedHours }: Props) => {
             <div className="grid gap-4 md:grid-cols-3">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Cost (Last Month)</CardTitle>
+                        <CardTitle className="text-sm font-medium">Total Cost ({periodLabel})</CardTitle>
                         <DollarSign className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(latestMonth.total_cost)}
+                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(aggregatedData.total_cost)}
                         </div>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Cost Per Job (Avg)</CardTitle>
+                        <CardTitle className="text-sm font-medium">Avg Cost Per Job ({periodLabel})</CardTitle>
                         <Briefcase className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(latestMonth.cost_per_job)}
+                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(aggregatedData.cost_per_job)}
                         </div>
                         <p className="text-xs text-muted-foreground">
-                            {latestMonth.open_jobs_count} open jobs
+                            {aggregatedData.open_jobs_count} open jobs (avg)
                         </p>
                     </CardContent>
                 </Card>
@@ -204,9 +238,7 @@ const CostOverview = ({ adjustedHours }: Props) => {
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="month" />
                                 <YAxis />
-                                <Tooltip
-                                    formatter={(value) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value as number)}
-                                />
+                                <Tooltip content={<CustomTooltip />} />
                                 <Legend />
                                 <Bar dataKey="total_employee_cost" name="Employee Costs" stackId="a" fill="#3b82f6" />
                                 <Bar dataKey="total_job_costs" name="Job Operational Costs" stackId="a" fill="#f59e0b" />

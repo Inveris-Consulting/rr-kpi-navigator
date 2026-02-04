@@ -34,8 +34,8 @@ const Sidebar = () => {
             className="h-10 w-auto"
           />
           <div className="flex flex-col">
-            <span className="text-sidebar-foreground font-display font-semibold text-lg leading-tight">
-              KPI Tracker
+            <span className="text-2xl uppercase tracking-wider font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
+              Hub
             </span>
           </div>
         </Link>
