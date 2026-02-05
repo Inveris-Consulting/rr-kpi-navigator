@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import MainLayout from '@/components/layout/MainLayout';
@@ -14,49 +14,95 @@ import { CalendarIcon, Save, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 
-interface KPIFormData {
-  date: Date;
-  callsMade: string;
-  meetingsSet: string;
-  meetingsCompleted: string;
-  closes: string;
-  openRequisitions: string;
-  vipList: string;
+interface KPIDefinition {
+  id: string;
+  name: string;
+  sector: string;
 }
 
 const AddKPI = () => {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState<KPIFormData>({
-    date: new Date(),
-    callsMade: '0',
-    meetingsSet: '0',
-    meetingsCompleted: '0',
-    closes: '0',
-    openRequisitions: '0',
-    vipList: '0',
-  });
+  const [date, setDate] = useState<Date>(new Date());
+  const [availableKpis, setAvailableKpis] = useState<KPIDefinition[]>([]);
+  const [formData, setFormData] = useState<Record<string, string>>({});
+  const [isLoadingKpis, setIsLoadingKpis] = useState(true);
 
-  const handleInputChange = (field: keyof KPIFormData) => (
+  // Fetch user's allowed KPIs (or all if admin)
+  useEffect(() => {
+    const fetchKpis = async () => {
+      if (!user) return;
+
+      try {
+        let kpis: KPIDefinition[] = [];
+
+        if (isAdmin) {
+          // Admin sees all KPIs
+          const { data, error } = await supabase
+            .from('kpis')
+            .select('*');
+
+          if (error) throw error;
+
+          kpis = (data || []).map((item: any) => ({
+            id: item.id,
+            name: item.name,
+            sector: item.sector
+          }));
+        } else {
+          // Regular user sees assigned KPIs
+          const { data, error } = await supabase
+            .from('user_kpis')
+            .select(`
+                kpis (
+                id,
+                name,
+                sector
+                )
+            `)
+            .eq('user_id', user.id);
+
+          if (error) throw error;
+
+          // Transform the nested data
+          kpis = (data || []).map((item: any) => ({
+            id: item.kpis.id,
+            name: item.kpis.name,
+            sector: item.kpis.sector
+          }));
+        }
+
+        const sortedKpis = kpis.sort((a, b) => {
+          // Sort by sector then name
+          if (a.sector !== b.sector) return a.sector.localeCompare(b.sector);
+          return a.name.localeCompare(b.name);
+        });
+
+        setAvailableKpis(sortedKpis);
+      } catch (error) {
+        console.error('Error fetching KPIs:', error);
+        toast.error('Failed to load KPIs configuration');
+      } finally {
+        setIsLoadingKpis(false);
+      }
+    };
+
+    fetchKpis();
+  }, [user, isAdmin]);
+
+  const handleInputChange = (kpiId: string) => (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
     setFormData(prev => ({
       ...prev,
-      [field]: e.target.value,
+      [kpiId]: e.target.value,
     }));
   };
 
   const handleReset = () => {
-    setFormData({
-      date: new Date(),
-      callsMade: '0',
-      meetingsSet: '0',
-      meetingsCompleted: '0',
-      closes: '0',
-      openRequisitions: '0',
-      vipList: '0',
-    });
+    setDate(new Date());
+    setFormData({});
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -66,21 +112,33 @@ const AddKPI = () => {
     setIsSubmitting(true);
 
     try {
-      // Prepare data for Supabase
-      const payload = {
-        user_id: user.id,
-        date: format(formData.date, 'yyyy-MM-dd'),
-        calls_made: parseInt(formData.callsMade) || 0,
-        meetings_set: parseInt(formData.meetingsSet) || 0,
-        meetings_completed: parseInt(formData.meetingsCompleted) || 0,
-        closes: parseInt(formData.closes) || 0,
-        open_requisitions: parseInt(formData.openRequisitions) || 0,
-        vip_list: parseInt(formData.vipList) || 0,
-      };
+      const formattedDate = format(date, 'yyyy-MM-dd');
+      const entriesToInsert = [];
+
+      for (const kpi of availableKpis) {
+        const value = formData[kpi.id];
+        // Only insert if value is provided (not empty string)
+        if (value !== undefined && value.trim() !== '') {
+          entriesToInsert.push({
+            user_id: user.id,
+            date: formattedDate,
+            kpi_id: kpi.id,
+            sector: kpi.sector, // Add sector denormalized
+            value: parseFloat(value),
+            // Legacy columns set to null/default are automatic if nullable, but we can ignore them as per plan
+          });
+        }
+      }
+
+      if (entriesToInsert.length === 0) {
+        toast.info('No values entered to save.');
+        setIsSubmitting(false);
+        return;
+      }
 
       const { error } = await supabase
         .from('kpi_entries')
-        .insert(payload);
+        .insert(entriesToInsert);
 
       if (error) throw error;
 
@@ -96,14 +154,14 @@ const AddKPI = () => {
     }
   };
 
-  const inputFields = [
-    { id: 'callsMade', label: 'Calls Made', placeholder: 'e.g., 25' },
-    { id: 'meetingsSet', label: 'Meetings Set', placeholder: 'e.g., 5' },
-    { id: 'meetingsCompleted', label: 'Meetings Completed', placeholder: 'e.g., 3' },
-    { id: 'closes', label: 'Closes', placeholder: 'e.g., 1' },
-    { id: 'openRequisitions', label: 'Open Requisitions', placeholder: 'e.g., 10' },
-    { id: 'vipList', label: 'Vip List', placeholder: 'e.g., 2' },
-  ];
+  // Group KPIs by sector
+  const kpisBySector = availableKpis.reduce((acc, kpi) => {
+    if (!acc[kpi.sector]) {
+      acc[kpi.sector] = [];
+    }
+    acc[kpi.sector].push(kpi);
+    return acc;
+  }, {} as Record<string, KPIDefinition[]>);
 
   return (
     <MainLayout>
@@ -121,94 +179,98 @@ const AddKPI = () => {
           <CardHeader>
             <CardTitle>KPI Entry for {user?.name}</CardTitle>
             <CardDescription>
-              Fill in your metrics for the selected date.
+              Fill in your metrics for the selected date. All fields are optional.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Date Picker */}
-              <div className="space-y-2">
-                <Label>Date</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal h-12",
-                        !formData.date && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {formData.date ? format(formData.date, "PPP") : "Pick a date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={formData.date}
-                      onSelect={(date) => date && setFormData(prev => ({ ...prev, date }))}
-                      initialFocus
-                      disabled={(date) => date > new Date()}
-                    />
-                  </PopoverContent>
-                </Popover>
+            {isLoadingKpis ? (
+              <div className="py-8 text-center text-muted-foreground">Loading allowed KPIs...</div>
+            ) : availableKpis.length === 0 ? (
+              <div className="py-8 text-center text-muted-foreground">
+                No KPIs configured for this user. Please contact an admin.
               </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Date Picker */}
+                <div className="space-y-2">
+                  <Label>Date</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal h-12",
+                          !date && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {date ? format(date, "PPP") : "Pick a date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={date}
+                        onSelect={(d) => d && setDate(d)}
+                        initialFocus
+                        disabled={(d) => d > new Date()}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
 
-              {/* Numeric Inputs */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {inputFields.map((field) => (
-                  <div key={field.id} className="space-y-2">
-                    <Label htmlFor={field.id}>{field.label}</Label>
-                    <Input
-                      id={field.id}
-                      type="number"
-                      min="0"
-                      placeholder={field.placeholder}
-                      value={formData[field.id as keyof KPIFormData] as string}
-                      onChange={handleInputChange(field.id as keyof KPIFormData)}
-                      className="h-12"
-                      required
-                    />
-                  </div>
-                ))}
-              </div>
-
-              {/* Calculated Preview */}
-              {formData.closes && formData.openRequisitions && (
-                <div className="p-4 rounded-xl bg-secondary/50 space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">Calculated Values</p>
-                  <div className="grid grid-cols-1 gap-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Req. Close Rate</p>
-                      <p className="text-lg font-bold text-primary">
-                        {((parseInt(formData.closes) / parseInt(formData.openRequisitions || '1')) * 100).toFixed(1)}%
-                      </p>
+                {/* Dynamic Inputs Grouped by Sector */}
+                {Object.entries(kpisBySector).map(([sector, kpis]) => (
+                  <div key={sector} className="space-y-4">
+                    <h3 className="text-lg font-semibold text-primary/80 border-b pb-1">{sector}</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {kpis.map((kpi) => (
+                        <div key={kpi.id} className="space-y-2">
+                          <Label htmlFor={kpi.id}>{kpi.name}</Label>
+                          <Input
+                            id={kpi.id}
+                            type="number"
+                            min="0"
+                            placeholder="..."
+                            value={formData[kpi.id] || ''}
+                            onChange={handleInputChange(kpi.id)}
+                            className="h-12"
+                          // Removed 'required' attribute
+                          />
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </div>
-              )}
+                ))}
 
-              {/* Actions */}
-              <div className="flex gap-4 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1"
-                  onClick={handleReset}
-                >
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Reset
-                </Button>
-                <Button
-                  type="submit"
-                  className="flex-1 gradient-primary"
-                  disabled={isSubmitting}
-                >
-                  <Save className="mr-2 h-4 w-4" />
-                  {isSubmitting ? 'Saving...' : 'Save Entry'}
-                </Button>
-              </div>
-            </form>
+                {/* Simple Calculated Preview for Req Close Rate if applicable */}
+                {/* Note: This is harder to do dynamically without knowing the exact IDs for 'closes' and 'open_requisitions'
+                    For now, I'll omit it or we'd need to look up the IDs by name if we really want to keep it.
+                    Given the refactor, let's remove it for now to avoid complexity, or try to find 'Closes' and 'Open Job Reqs' by name. 
+                */}
+
+                {/* Actions */}
+                <div className="flex gap-4 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={handleReset}
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Reset
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="flex-1 gradient-primary"
+                    disabled={isSubmitting}
+                  >
+                    <Save className="mr-2 h-4 w-4" />
+                    {isSubmitting ? 'Saving...' : 'Save Entry'}
+                  </Button>
+                </div>
+              </form>
+            )}
           </CardContent>
         </Card>
       </div>

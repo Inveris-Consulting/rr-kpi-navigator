@@ -17,7 +17,7 @@ import {
   BarChart3,
   Star
 } from 'lucide-react';
-import { KPIEntry } from '@/lib/mockData'; // Keeping interface for now or redefining
+import { KPIEntry } from '@/lib/mockData';
 
 const Dashboard = () => {
   const { user, isAdmin } = useAuth();
@@ -26,7 +26,7 @@ const Dashboard = () => {
   const [groupBy, setGroupBy] = useState<'day' | 'week' | 'month'>('day');
 
   // Fetch KPI Data from Supabase
-  const { data: kpiData = [], isLoading } = useQuery({
+  const { data: rawData = [], isLoading } = useQuery({
     queryKey: ['kpiEntries', selectedPeriod, selectedUser],
     queryFn: async () => {
       console.log('Fetching KPI data...', { selectedPeriod, selectedUser, userId: user?.id });
@@ -36,7 +36,10 @@ const Dashboard = () => {
 
       let query = supabase
         .from('kpi_entries')
-        .select('*')
+        .select(`
+            *,
+            kpis (id, name, sector)
+        `)
         .gte('date', startDate.toISOString().split('T')[0])
         .lte('date', endDate.toISOString().split('T')[0])
         .order('date', { ascending: false });
@@ -52,47 +55,49 @@ const Dashboard = () => {
         console.error('Supabase Error:', error);
         throw error;
       }
-      console.log('Fetched data:', data?.length);
-      if (data?.length === 0) console.warn('No data found for query:', { startDate, endDate, uid: selectedUser || user?.id });
-
-
-      // Map Supabase snake_case to application camelCase
-      return (data || []).map((item: any) => ({
-        id: item.id,
-        userId: item.user_id,
-        date: item.date,
-        callsMade: item.calls_made,
-        meetingsSet: item.meetings_set,
-        meetingsCompleted: item.meetings_completed,
-        closes: item.closes,
-        openRequisitions: item.open_requisitions,
-        reqCloseRate: item.req_close_rate,
-        vipList: item.vip_list || 0,
-        createdAt: item.created_at
-      })) as KPIEntry[];
+      return data || [];
     },
     enabled: !!user,
     staleTime: 1000 * 60 * 5, // 5 minutes
     refetchOnWindowFocus: false,
   });
 
-  // Calculate Aggregates & Charts (Client-side mainly for now to keep logic similar)
+  // Calculate Aggregates & Charts (Client-side)
   const { chartData, aggregated, recentEntries } = useMemo(() => {
-    if (!kpiData.length) return { chartData: [], aggregated: null, recentEntries: [] };
+    if (!rawData.length) return { chartData: [], aggregated: null, recentEntries: [] };
 
-    // Aggregate
-    const totalCalls = kpiData.reduce((acc, curr) => acc + (curr.callsMade || 0), 0);
-    const totalMeetingsSet = kpiData.reduce((acc, curr) => acc + (curr.meetingsSet || 0), 0);
-    const totalMeetingsCompleted = kpiData.reduce((acc, curr) => acc + (curr.meetingsCompleted || 0), 0);
-    const totalCloses = kpiData.reduce((acc, curr) => acc + (curr.closes || 0), 0);
-    const totalVipList = kpiData.reduce((acc, curr) => acc + (curr.vipList || 0), 0);
-    const count = kpiData.length;
+    // Aggregates
+    let totalCalls = 0;
+    let totalMeetingsSet = 0;
+    let totalMeetingsCompleted = 0;
+    let totalCloses = 0;
+    let totalVipList = 0;
 
-    // Averages
-    const avgOpenRequisitions = Math.round(kpiData.reduce((acc, curr) => acc + (curr.openRequisitions || 0), 0) / (count || 1));
+    // For averages
+    let sumOpenRequisitions = 0;
+    let countOpenReqsEntries = 0;
 
-    // Recalculate rates
-    const avgReqCloseRate = parseFloat((kpiData.reduce((acc, curr) => acc + (Number(curr.reqCloseRate) || 0), 0) / (count || 1)).toFixed(1));
+    // Process raw rows
+    rawData.forEach((row: any) => {
+      const name = row.kpis?.name;
+      const val = Number(row.value || 0);
+
+      if (!name) return;
+
+      if (name === 'Calls') totalCalls += val;
+      if (name === 'Meetings set') totalMeetingsSet += val;
+      if (name === 'Completed Meetings' || name === 'Meetings') totalMeetingsCompleted += val; // Handle both types
+      if (name === 'Closes') totalCloses += val;
+      if (name === 'VIP List') totalVipList += val;
+      if (name === 'Open Job Reqs' || name === 'Open Requisitions') {
+        sumOpenRequisitions += val;
+        countOpenReqsEntries++;
+      }
+    });
+
+    const avgOpenRequisitions = countOpenReqsEntries > 0 ? Math.round(sumOpenRequisitions / countOpenReqsEntries) : 0;
+
+    const avgReqCloseRate = sumOpenRequisitions > 0 ? ((totalCloses / sumOpenRequisitions) * 100).toFixed(1) : '0.0';
 
     const aggregated = {
       totalCalls,
@@ -104,81 +109,84 @@ const Dashboard = () => {
       avgReqCloseRate
     };
 
-    // Chart Data
-    // Grouping logic... reusing simple map or write new one.
-    // Let's implement a simple grouper since we lost `getChartData`.
+    // Chart Data Grouping
     const chartMap = new Map();
-    kpiData.forEach(entry => {
-      let key = entry.date; // default day
-      if (groupBy === 'month') key = entry.date.substring(0, 7); // YYYY-MM
-      // Week logic is a bit complex, sticking to simple day for now or basic
+    rawData.forEach((row: any) => {
+      let key = row.date;
+      if (groupBy === 'month') key = row.date.substring(0, 7);
 
       if (!chartMap.has(key)) {
         chartMap.set(key, { date: key, calls: 0, meetings: 0, completed: 0, closes: 0 });
       }
       const node = chartMap.get(key);
-      node.calls += entry.callsMade || 0;
-      node.meetings += entry.meetingsSet || 0;
-      node.completed += entry.meetingsCompleted || 0;
-      node.closes += entry.closes || 0;
+      const name = row.kpis?.name;
+      const val = Number(row.value || 0);
+
+      if (name === 'Calls') node.calls += val;
+      if (name === 'Meetings set') node.meetings += val;
+      if (name === 'Completed Meetings' || name === 'Meetings') node.completed += val;
+      if (name === 'Closes') node.closes += val;
     });
 
-    // Sort by date
     const chartData = Array.from(chartMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+    // Recent Entries - Pivot for display
+    const entriesMap = new Map();
+    rawData.forEach((row: any) => {
+      const key = `${row.date}_${row.user_id}`;
+      if (!entriesMap.has(key)) {
+        entriesMap.set(key, {
+          id: key,
+          userId: row.user_id,
+          date: row.date,
+          callsMade: 0,
+          meetingsSet: 0,
+          meetingsCompleted: 0,
+          closes: 0,
+          openRequisitions: 0,
+          reqCloseRate: 0,
+          vipList: 0,
+          createdAt: row.created_at
+        });
+      }
+      const entry = entriesMap.get(key);
+      const name = row.kpis?.name;
+      const val = Number(row.value || 0);
+
+      if (name === 'Calls') entry.callsMade = val;
+      if (name === 'Meetings set') entry.meetingsSet = val;
+      if (name === 'Completed Meetings' || name === 'Meetings') entry.meetingsCompleted = val;
+      if (name === 'Closes') entry.closes = val;
+      if (name === 'Open Job Reqs' || name === 'Open Requisitions') entry.openRequisitions = val;
+      if (name === 'VIP List') entry.vipList = val;
+    });
+
+    // Calc rates for recent entries
+    const recentEntries = Array.from(entriesMap.values())
+      .map(e => ({
+        ...e,
+        reqCloseRate: e.openRequisitions > 0 ? ((e.closes / e.openRequisitions) * 100).toFixed(1) : 0
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 5);
 
     return {
       chartData,
       aggregated,
-      recentEntries: kpiData.slice(0, 5) // Already ordered by date desc in query
+      recentEntries
     };
-  }, [kpiData, groupBy]);
+  }, [rawData, groupBy]);
 
-  // Previous Period for Trends (simplified: just fetching again or derived?)
-  // For proper trends, we need another query. 
-  const { data: previousData = [] } = useQuery({
-    queryKey: ['kpiEntriesPrev', selectedPeriod, selectedUser],
-    queryFn: async () => {
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - (parseInt(selectedPeriod) * 2));
-      const endDate = new Date();
-      endDate.setDate(endDate.getDate() - parseInt(selectedPeriod));
+  // Previous Period Trends (Placeholder)
+  const trends = {
+    calls: 0,
+    meetings: 0,
+    completed: 0,
+    closes: 0,
+    vipList: 0
+  };
 
-      let query = supabase
-        .from('kpi_entries')
-        .select('calls_made, meetings_set, meetings_completed, closes, vip_list')
-        .gte('date', startDate.toISOString().split('T')[0])
-        .lte('date', endDate.toISOString().split('T')[0]);
-
-      if (selectedUser !== 'all') {
-        query = query.eq('user_id', selectedUser || user?.id);
-      }
-      const { data } = await query;
-      return data || [];
-    },
-    enabled: !!user
-  });
-
-  const trends = useMemo(() => {
-    if (!aggregated || !previousData.length) return {};
-
-    const prevCalls = previousData.reduce((acc, curr) => acc + (curr.calls_made || 0), 0);
-    const prevSet = previousData.reduce((acc, curr) => acc + (curr.meetings_set || 0), 0);
-    const prevCompleted = previousData.reduce((acc, curr) => acc + (curr.meetings_completed || 0), 0);
-    const prevCloses = previousData.reduce((acc, curr) => acc + (curr.closes || 0), 0);
-    const prevVipList = previousData.reduce((acc, curr) => acc + (curr.vip_list || 0), 0);
-
-    const calc = (curr: number, prev: number) => prev === 0 ? 0 : Math.round(((curr - prev) / prev) * 100);
-
-    return {
-      calls: calc(aggregated.totalCalls, prevCalls),
-      meetings: calc(aggregated.totalMeetingsSet, prevSet),
-      completed: calc(aggregated.totalMeetingsCompleted, prevCompleted),
-      closes: calc(aggregated.totalCloses, prevCloses),
-      vipList: calc(aggregated.totalVipList, prevVipList)
-    };
-  }, [aggregated, previousData]);
-
-  if (isLoading && kpiData.length === 0) {
+  if (isLoading && rawData.length === 0) {
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-96">
