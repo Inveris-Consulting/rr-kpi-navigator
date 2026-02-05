@@ -35,7 +35,7 @@ const RecentEntries = ({ entries, showUser = true }: RecentEntriesProps) => {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="font-semibold text-foreground">
-                    {format(new Date(entry.date), 'MMM d, yyyy')}
+                    {format(new Date(entry.date.length === 10 ? `${entry.date}T00:00:00` : entry.date), 'MMM d, yyyy')}
                   </span>
                   {showUser && (
                     <Badge variant="outline" className="text-xs">

@@ -28,8 +28,12 @@ const AddKPI = () => {
   const [availableKpis, setAvailableKpis] = useState<KPIDefinition[]>([]);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [isLoadingKpis, setIsLoadingKpis] = useState(true);
+  const [isLoadingEntry, setIsLoadingEntry] = useState(false);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  // Store existing entry IDs if we need to update rows individually
+  const [existingEntries, setExistingEntries] = useState<Record<string, string>>({});
 
-  // Fetch user's allowed KPIs (or all if admin)
+  // 1. Fetch user's allowed KPIs (or all if admin)
   useEffect(() => {
     const fetchKpis = async () => {
       if (!user) return;
@@ -39,12 +43,8 @@ const AddKPI = () => {
 
         if (isAdmin) {
           // Admin sees all KPIs
-          const { data, error } = await supabase
-            .from('kpis')
-            .select('*');
-
+          const { data, error } = await supabase.from('kpis').select('*');
           if (error) throw error;
-
           kpis = (data || []).map((item: any) => ({
             id: item.id,
             name: item.name,
@@ -91,6 +91,48 @@ const AddKPI = () => {
     fetchKpis();
   }, [user, isAdmin]);
 
+  // 2. Fetch existing entries when Date changes or User changes (for admin switching context?) 
+  // currently admin mimics current signed-in user or needs to select user? 
+  // Requirement says "adicionei valores... aparecer para edição". 
+  // Assuming logged in user edits THEIR data.
+  // If admin, they are editing THEIR data unless we add a user selector here too.
+  // For now, assume it's for the currently authenticated context user.
+  useEffect(() => {
+    const fetchEntries = async () => {
+      if (!user || !date) return;
+      setIsLoadingEntry(true);
+      try {
+        const formattedDate = format(date, 'yyyy-MM-dd');
+        const { data, error } = await supabase
+          .from('kpi_entries')
+          .select('id, kpi_id, value')
+          .eq('user_id', user.id)
+          .eq('date', formattedDate);
+
+        if (error) throw error;
+
+        const newFormData: Record<string, string> = {};
+        const newExistingEntries: Record<string, string> = {};
+
+        data?.forEach((entry: any) => {
+          if (entry.kpi_id) {
+            newFormData[entry.kpi_id] = entry.value.toString();
+            newExistingEntries[entry.kpi_id] = entry.id;
+          }
+        });
+
+        setFormData(newFormData);
+        setExistingEntries(newExistingEntries);
+      } catch (error) {
+        console.error("Error fetching existing entries", error);
+      } finally {
+        setIsLoadingEntry(false);
+      }
+    };
+
+    fetchEntries();
+  }, [date, user]);
+
   const handleInputChange = (kpiId: string) => (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -101,8 +143,10 @@ const AddKPI = () => {
   };
 
   const handleReset = () => {
-    setDate(new Date());
+    // Resetting only form data, not date? Or reset everything?
+    // "Reset" button usually clears the form.
     setFormData({});
+    setExistingEntries({});
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -113,34 +157,37 @@ const AddKPI = () => {
 
     try {
       const formattedDate = format(date, 'yyyy-MM-dd');
-      const entriesToInsert = [];
 
-      for (const kpi of availableKpis) {
-        const value = formData[kpi.id];
-        // Only insert if value is provided (not empty string)
-        if (value !== undefined && value.trim() !== '') {
-          entriesToInsert.push({
-            user_id: user.id,
-            date: formattedDate,
-            kpi_id: kpi.id,
-            sector: kpi.sector, // Add sector denormalized
-            value: parseFloat(value),
-            // Legacy columns set to null/default are automatic if nullable, but we can ignore them as per plan
-          });
+      const promises = availableKpis.map(async (kpi) => {
+        const valueStr = formData[kpi.id];
+        if (valueStr !== undefined && valueStr.trim() !== '') {
+          const val = parseFloat(valueStr);
+          const existingId = existingEntries[kpi.id];
+
+          if (existingId) {
+            // Update existing
+            const { error } = await supabase
+              .from('kpi_entries')
+              .update({ value: val, sector: kpi.sector })
+              .eq('id', existingId);
+            if (error) throw error;
+          } else {
+            // Insert new
+            const { error } = await supabase
+              .from('kpi_entries')
+              .insert({
+                user_id: user.id,
+                date: formattedDate,
+                kpi_id: kpi.id,
+                sector: kpi.sector,
+                value: val
+              });
+            if (error) throw error;
+          }
         }
-      }
+      });
 
-      if (entriesToInsert.length === 0) {
-        toast.info('No values entered to save.');
-        setIsSubmitting(false);
-        return;
-      }
-
-      const { error } = await supabase
-        .from('kpi_entries')
-        .insert(entriesToInsert);
-
-      if (error) throw error;
+      await Promise.all(promises);
 
       toast.success('KPI Entry Saved!');
       navigate('/');
@@ -175,7 +222,14 @@ const AddKPI = () => {
           </p>
         </div>
 
-        <Card className="animate-fade-in">
+        <Card className="animate-fade-in relative">
+          {/* Loading Overlay */}
+          {isLoadingEntry && (
+            <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          )}
+
           <CardHeader>
             <CardTitle>KPI Entry for {user?.name}</CardTitle>
             <CardDescription>
@@ -194,7 +248,7 @@ const AddKPI = () => {
                 {/* Date Picker */}
                 <div className="space-y-2">
                   <Label>Date</Label>
-                  <Popover>
+                  <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
@@ -211,7 +265,12 @@ const AddKPI = () => {
                       <Calendar
                         mode="single"
                         selected={date}
-                        onSelect={(d) => d && setDate(d)}
+                        onSelect={(d) => {
+                          if (d) {
+                            setDate(d);
+                            setIsCalendarOpen(false);
+                          }
+                        }}
                         initialFocus
                         disabled={(d) => d > new Date()}
                       />
@@ -235,19 +294,12 @@ const AddKPI = () => {
                             value={formData[kpi.id] || ''}
                             onChange={handleInputChange(kpi.id)}
                             className="h-12"
-                          // Removed 'required' attribute
                           />
                         </div>
                       ))}
                     </div>
                   </div>
                 ))}
-
-                {/* Simple Calculated Preview for Req Close Rate if applicable */}
-                {/* Note: This is harder to do dynamically without knowing the exact IDs for 'closes' and 'open_requisitions'
-                    For now, I'll omit it or we'd need to look up the IDs by name if we really want to keep it.
-                    Given the refactor, let's remove it for now to avoid complexity, or try to find 'Closes' and 'Open Job Reqs' by name. 
-                */}
 
                 {/* Actions */}
                 <div className="flex gap-4 pt-4">
@@ -263,7 +315,7 @@ const AddKPI = () => {
                   <Button
                     type="submit"
                     className="flex-1 gradient-primary"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || isLoadingEntry}
                   >
                     <Save className="mr-2 h-4 w-4" />
                     {isSubmitting ? 'Saving...' : 'Save Entry'}

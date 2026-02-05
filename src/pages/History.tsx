@@ -201,7 +201,8 @@ const History = () => {
                   {processedEntries.map((entry) => (
                     <TableRow key={entry.id} className="hover:bg-secondary/30">
                       <TableCell className="font-medium">
-                        {format(new Date(entry.date), 'MMM d, yyyy')}
+                        {/* Append T00:00:00 to force local time interpretation of the date string */}
+                        {format(new Date(`${entry.date}T00:00:00`), 'MMM d, yyyy')}
                       </TableCell>
                       {isAdmin && (
                         <TableCell>
