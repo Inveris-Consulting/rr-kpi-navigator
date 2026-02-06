@@ -114,10 +114,6 @@ const Dashboard = () => {
       acc[def.sector][def.name] = 0;
     });
 
-    // Stock metrics that need averaging (hardcoded list for now, or could be in DB)
-    const stockMetrics = ['Active Clients', 'Open Job Reqs', 'Open Positions'];
-    const counts: Record<string, number> = {};
-
     rawData.forEach((row: any) => {
       const name = row.kpis?.name;
       const sector = row.kpis?.sector;
@@ -130,24 +126,6 @@ const Dashboard = () => {
       if (acc[sector][name] === undefined) acc[sector][name] = 0;
 
       acc[sector][name] += val;
-
-      if (stockMetrics.includes(name)) {
-        const key = `${sector}_${name}`;
-        counts[key] = (counts[key] || 0) + 1;
-      }
-    });
-
-    // Average the stock metrics
-    Object.keys(acc).forEach(sector => {
-      Object.keys(acc[sector]).forEach(name => {
-        if (stockMetrics.includes(name)) {
-          const key = `${sector}_${name}`;
-          const count = counts[key] || 0;
-          if (count > 0) {
-            acc[sector][name] = Math.round(acc[sector][name] / count);
-          }
-        }
-      });
     });
 
     return acc;
