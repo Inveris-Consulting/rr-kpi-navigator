@@ -91,14 +91,6 @@ const CostOverview = ({ adjustedHours }: Props) => {
 
     }, [jobs, jobCosts, employees, timeRange, selectedMonth, adjustedHours]);
 
-    if (isLoading) {
-        return <div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>;
-    }
-
-    if (isError && !isLoading) {
-        return <div className="p-8 text-center text-red-500">Error loading cost data. Please try refreshing.</div>;
-    }
-
     const aggregatedData = useMemo(() => {
         if (formattedData.length === 0) return { total_cost: 0, cost_per_job: 0, open_jobs_count: 0 };
 
@@ -127,6 +119,14 @@ const CostOverview = ({ adjustedHours }: Props) => {
             open_jobs_count: avgOpenJobs
         };
     }, [formattedData]);
+
+    if (isLoading) {
+        return <div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>;
+    }
+
+    if (isError && !isLoading) {
+        return <div className="p-8 text-center text-red-500">Error loading cost data. Please try refreshing.</div>;
+    }
 
     const periodLabel = timeRange === 'custom'
         ? format(new Date(selectedMonth + '-01'), 'MMMM yyyy')

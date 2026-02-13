@@ -105,8 +105,18 @@ const Dashboard = () => {
 
   // 3. Compute Stats Dynamically
   // Structure: { [SectorName]: { [KpiName]: { total: number, count: number, isStock: boolean } } }
+  // 3. Compute Stats Dynamically
+  // Structure: { [SectorName]: { [KpiName]: { total: number, count: number, isStock: boolean } } }
   const stats = useMemo(() => {
     const acc: Record<string, Record<string, number>> = {};
+
+    // KPIs that should show the "Current" (Latest) value per user, not the sum over time
+    // We assume rawData is sorted by date DESC (latest first)
+    const snapshotKPIs = ['Active Clients', 'Open Job Reqs', 'Open Positions'];
+    const visitedSnapshotUsers: Record<string, Set<string>> = {};
+
+    // Initialize trackers for snapshots
+    snapshotKPIs.forEach(kpi => visitedSnapshotUsers[kpi] = new Set());
 
     // Initialize with 0 for all definitions to ensure all cards show up even if no data
     kpiDefinitions.forEach((def: any) => {
@@ -118,6 +128,7 @@ const Dashboard = () => {
       const name = row.kpis?.name;
       const sector = row.kpis?.sector;
       const val = Number(row.value || 0);
+      const userId = row.user_id;
 
       if (!name || !sector) return;
 
@@ -125,7 +136,16 @@ const Dashboard = () => {
       if (!acc[sector]) acc[sector] = {};
       if (acc[sector][name] === undefined) acc[sector][name] = 0;
 
-      acc[sector][name] += val;
+      if (snapshotKPIs.includes(name)) {
+        // Only take the LATEST entry for each user (since rawData is sorted by date desc)
+        if (!visitedSnapshotUsers[name].has(userId)) {
+          acc[sector][name] += val;
+          visitedSnapshotUsers[name].add(userId);
+        }
+      } else {
+        // Standard Behavior: Sum all entries
+        acc[sector][name] += val;
+      }
     });
 
     return acc;
