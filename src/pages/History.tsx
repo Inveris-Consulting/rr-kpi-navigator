@@ -4,6 +4,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import FilterBar from '@/components/dashboard/FilterBar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -12,9 +13,23 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useQuery } from '@tanstack/react-query';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
+import { Edit, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { EditEntryModal } from '@/components/dashboard/EditEntryModal';
 
 interface PivotedEntry {
   id: string;
@@ -23,6 +38,7 @@ interface PivotedEntry {
   date: string;
   [key: string]: any; // Dynamic KPI values
 }
+
 
 const History = () => {
   const { user, isAdmin } = useAuth();
@@ -143,6 +159,34 @@ const History = () => {
     });
   }, [entries]);
 
+  const [editingEntry, setEditingEntry] = useState<PivotedEntry | null>(null);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const queryClient = useQueryClient();
+
+  const handleEditClick = (entry: PivotedEntry) => {
+    setEditingEntry(entry);
+    setIsEditOpen(true);
+  };
+
+  const handleDelete = async (entry: PivotedEntry) => {
+    try {
+      const { error } = await supabase
+        .from('kpi_entries')
+        .delete()
+        .eq('user_id', entry.userId)
+        .eq('date', entry.date);
+
+      if (error) throw error;
+
+      toast.success('Entry deleted successfully');
+      queryClient.invalidateQueries({ queryKey: ['kpiHistory'] });
+    } catch (error) {
+      console.error('Error deleting entry:', error);
+      toast.error('Failed to delete entry');
+    }
+  };
+
+
   return (
     <MainLayout>
       <div className="space-y-8">
@@ -195,11 +239,13 @@ const History = () => {
 
                     {/* Calculated Headers */}
                     <TableHead className="text-right font-semibold">Close Rate</TableHead>
+                    {/* Actions Header */}
+                    <TableHead className="w-[100px] text-right font-semibold sticky right-0 bg-background z-10 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.1)]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {processedEntries.map((entry) => (
-                    <TableRow key={entry.id} className="hover:bg-secondary/30">
+                    <TableRow key={entry.id} className="hover:bg-secondary/30 group relative">
                       <TableCell className="font-medium">
                         {/* Append T00:00:00 to force local time interpretation of the date string */}
                         {format(new Date(`${entry.date}T00:00:00`), 'MMM d, yyyy')}
@@ -230,11 +276,56 @@ const History = () => {
                           </Badge>
                         ) : '-'}
                       </TableCell>
+
+                      {/* Actions */}
+                      <TableCell className="text-right sticky right-0 bg-background z-10 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.1)]">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-primary"
+                            onClick={() => handleEditClick(entry)}
+                            title="Edit Entry"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                title="Delete Entry"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete this entry?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete the entry for <span className="font-medium">{entry.userName}</span> on <span className="font-medium">{format(new Date(entry.date + 'T00:00:00'), 'MMM d, yyyy')}</span>?
+                                  This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  onClick={() => handleDelete(entry)}
+                                >
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                   {processedEntries.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={kpiDefinitions.length + 3} className="text-center h-24 text-muted-foreground">
+                      <TableCell colSpan={kpiDefinitions.length + (isAdmin ? 4 : 3)} className="text-center h-24 text-muted-foreground">
                         No entries found for the selected period.
                       </TableCell>
                     </TableRow>
@@ -250,6 +341,14 @@ const History = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Edit Modal */}
+        <EditEntryModal
+          isOpen={isEditOpen}
+          onClose={() => setIsEditOpen(false)}
+          entry={editingEntry}
+          kpiDefinitions={kpiDefinitions}
+        />
       </div>
     </MainLayout>
   );
