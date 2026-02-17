@@ -30,6 +30,7 @@ import { format } from 'date-fns';
 import { Edit, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { EditEntryModal } from '@/components/dashboard/EditEntryModal';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface PivotedEntry {
   id: string;
@@ -48,16 +49,41 @@ const History = () => {
 
   // Fetch all KPIs to define table columns and order
   const { data: kpiDefinitions = [] } = useQuery({
-    queryKey: ['kpiDefinitions'],
+    queryKey: ['kpiDefinitions', isAdmin, user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('kpis')
-        .select('*')
-        .order('sector', { ascending: true })
-        .order('name', { ascending: true });
-      if (error) throw error;
-      return data || [];
-    }
+      if (isAdmin) {
+        // Admin sees all KPIs
+        const { data, error } = await supabase
+          .from('kpis')
+          .select('*')
+          .order('sector', { ascending: true })
+          .order('name', { ascending: true });
+        if (error) throw error;
+        return data || [];
+      } else {
+        // Regular users only see assigned KPIs
+        const { data, error } = await supabase
+          .from('user_kpis')
+          .select(`
+            kpis (
+              id,
+              name,
+              sector
+            )
+          `)
+          .eq('user_id', user?.id);
+
+        if (error) throw error;
+
+        // Transform and sort
+        const kpis = (data || []).map((item: any) => item.kpis);
+        return kpis.sort((a: any, b: any) => {
+          if (a.sector !== b.sector) return a.sector.localeCompare(b.sector);
+          return a.name.localeCompare(b.name);
+        });
+      }
+    },
+    enabled: !!user
   });
 
   const { data: entries = [], isLoading } = useQuery({
@@ -92,11 +118,6 @@ const History = () => {
       const pivotedMap = new Map<string, PivotedEntry>();
 
       (data || []).forEach((row: any) => {
-        // We use normalization valid entries only, but we might encounter old data if not migrated. 
-        // The query selects from kpi_entries. 
-        // If 'kpi_id' is null (old data which we haven't dropped yet?), we skip or handle?
-        // The prompt asked to add functionality, we assume new data primarily.
-        // If kpi_id is present:
         if (row.kpis) {
           const key = `${row.date}_${row.user_id}`;
           if (!pivotedMap.has(key)) {
@@ -108,12 +129,7 @@ const History = () => {
             });
           }
           const entry = pivotedMap.get(key)!;
-          // Use KPI name as key for simplicity in rendering, or ID. Name is friendlier for generic table.
-          // Using ID might be safer but headers need to match.
-          // Let's use KPI ID mapped to Name for display, but use ID in data object to be robust?
-          // Actually, simpler: Use KPI Name as key if unique, which they should be.
           entry[row.kpis.name] = row.value;
-          entry.sector = row.sector; // Last one wins, but usually consistent per KPI? No, mixed sectors possible per day.
         }
       });
 
@@ -123,31 +139,16 @@ const History = () => {
   });
 
   // Calculate calculated columns (e.g., Close Rate) if possible
-  // This logic was previously hardcoded: (closes / openRequisitions).
-  // We can try to replicate it if "Closes" and "Open Job Reqs" exist.
   const processedEntries = useMemo(() => {
     return entries.map(entry => {
-      // Safe access helper
       const getVal = (name: string) => Number(entry[name] || 0);
-
-      // Example: Rate = Closes / Open Job Reqs
-      // Need to check exact names from Step 1/Migration
-      // Names: 'Closes', 'Open Job Reqs'
-      const closes = getVal('Closes'); // Janet has 'Closes', Amber ?? Amber has 'Closed Job Reqs'?
-      // Amber has 'Closed Job Reqs'. Janet has 'Closes'.
-      // Let's look at the migration:
-      // Amber: 'Closed Job Reqs' (RAR)
-      // Janet: 'Closes' (RAR)
-      // The calculation logic might differ per user or we standardized?
-      // The previous code had `closes` and `openRequisitions`.
-      // Let's try to calculate generic 'Close Rate' if matching columns found.
-
       let closeRate = 0;
-      // Try common pairs or just skip calculation for generic view now that it's dynamic
-      if (entry['Closes'] && entry['Open Reqs']) { // Janet?
+
+      // Calculate Close Rate
+      if (entry['Closes'] && entry['Open Reqs']) {
         const val = getVal('Open Reqs');
         if (val > 0) closeRate = (getVal('Closes') / val) * 100;
-      } else if (entry['Closed Job Reqs'] && entry['Open Job Reqs']) { // Amber?
+      } else if (entry['Closed Job Reqs'] && entry['Open Job Reqs']) {
         const val = getVal('Open Job Reqs');
         if (val > 0) closeRate = (getVal('Closed Job Reqs') / val) * 100;
       }
@@ -186,6 +187,11 @@ const History = () => {
     }
   };
 
+  // Get unique sectors
+  const sectors = useMemo(() => {
+    const s = Array.from(new Set(kpiDefinitions.map((d: any) => d.sector)));
+    return s.sort((a: any, b: any) => a.localeCompare(b));
+  }, [kpiDefinitions]);
 
   return (
     <MainLayout>
@@ -220,124 +226,147 @@ const History = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto">
-            <div className="rounded-lg border">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-secondary/50">
-                    <TableHead className="font-semibold min-w-[120px]">Date</TableHead>
-                    {isAdmin && <TableHead className="font-semibold min-w-[150px]">User</TableHead>}
-
-                    {/* Dynamic Headers */}
-                    {kpiDefinitions.map((kpi: any) => (
-                      <TableHead key={kpi.id} className="text-right font-semibold whitespace-nowrap">
-                        {kpi.name}
-                        <span className="text-xs font-normal text-muted-foreground block">
-                          {kpi.sector}
-                        </span>
-                      </TableHead>
-                    ))}
-
-                    {/* Calculated Headers */}
-                    <TableHead className="text-right font-semibold">Close Rate</TableHead>
-                    {/* Actions Header */}
-                    <TableHead className="w-[100px] text-right font-semibold sticky right-0 bg-background z-10 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.1)]">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {processedEntries.map((entry) => (
-                    <TableRow key={entry.id} className="hover:bg-secondary/30 group relative">
-                      <TableCell className="font-medium">
-                        {/* Append T00:00:00 to force local time interpretation of the date string */}
-                        {format(new Date(`${entry.date}T00:00:00`), 'MMM d, yyyy')}
-                      </TableCell>
-                      {isAdmin && (
-                        <TableCell>
-                          <Badge variant="outline" className="font-normal">
-                            {entry.userName}
-                          </Badge>
-                        </TableCell>
-                      )}
-
-                      {/* Dynamic Values */}
-                      {kpiDefinitions.map((kpi: any) => (
-                        <TableCell key={kpi.id} className="text-right">
-                          {entry[kpi.name] !== undefined ? entry[kpi.name] : '-'}
-                        </TableCell>
-                      ))}
-
-                      {/* Calculated Values */}
-                      <TableCell className="text-right">
-                        {entry._closeRate > 0 ? (
-                          <Badge
-                            variant={entry._closeRate >= 20 ? 'default' : 'secondary'}
-                            className={entry._closeRate >= 20 ? 'bg-success' : ''}
-                          >
-                            {entry._closeRate.toFixed(1)}%
-                          </Badge>
-                        ) : '-'}
-                      </TableCell>
-
-                      {/* Actions */}
-                      <TableCell className="text-right sticky right-0 bg-background z-10 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.1)]">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-primary"
-                            onClick={() => handleEditClick(entry)}
-                            title="Edit Entry"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                                title="Delete Entry"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Delete this entry?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to delete the entry for <span className="font-medium">{entry.userName}</span> on <span className="font-medium">{format(new Date(entry.date + 'T00:00:00'), 'MMM d, yyyy')}</span>?
-                                  This action cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                  onClick={() => handleDelete(entry)}
-                                >
-                                  Delete
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {processedEntries.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={kpiDefinitions.length + (isAdmin ? 4 : 3)} className="text-center h-24 text-muted-foreground">
-                        No entries found for the selected period.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-
-            {isLoading && (
+            {isLoading ? (
               <div className="text-center py-4 text-muted-foreground">
                 Loading history data...
               </div>
+            ) : (
+              <Tabs defaultValue={sectors[0] || 'all'} className="w-full">
+                <TabsList className="mb-4 flex flex-wrap h-auto gap-2 bg-transparent justify-start p-0">
+                  {sectors.map((sector: any) => (
+                    <TabsTrigger
+                      key={sector}
+                      value={sector}
+                      className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-6 py-2 rounded-full border border-border bg-card shadow-sm"
+                    >
+                      {sector}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+
+                {sectors.map((sector: any) => {
+                  const sectorKpis = kpiDefinitions.filter((k: any) => k.sector === sector);
+
+                  return (
+                    <TabsContent key={sector} value={sector}>
+                      <div className="rounded-lg border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-secondary/50">
+                              <TableHead className="font-semibold min-w-[120px]">Date</TableHead>
+                              {isAdmin && <TableHead className="font-semibold min-w-[150px]">User</TableHead>}
+
+                              {/* Dynamic Headers for this Sector */}
+                              {sectorKpis.map((kpi: any) => (
+                                <TableHead key={kpi.id} className="text-right font-semibold whitespace-nowrap">
+                                  {kpi.name}
+                                </TableHead>
+                              ))}
+
+                              {/* Calculated Headers - Only for RAR */}
+                              {sector === 'RAR' && (
+                                <TableHead className="text-right font-semibold">Close Rate</TableHead>
+                              )}
+
+                              {/* Actions Header */}
+                              <TableHead className="w-[100px] text-right font-semibold sticky right-0 bg-background z-10 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.1)]">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {processedEntries.map((entry) => (
+                              <TableRow key={entry.id} className="hover:bg-secondary/30 group relative">
+                                <TableCell className="font-medium">
+                                  {format(new Date(`${entry.date}T00:00:00`), 'MMM d, yyyy')}
+                                </TableCell>
+                                {isAdmin && (
+                                  <TableCell>
+                                    <Badge variant="outline" className="font-normal">
+                                      {entry.userName}
+                                    </Badge>
+                                  </TableCell>
+                                )}
+
+                                {/* Dynamic Values for this Sector */}
+                                {sectorKpis.map((kpi: any) => (
+                                  <TableCell key={kpi.id} className="text-right">
+                                    {entry[kpi.name] !== undefined ? entry[kpi.name] : '-'}
+                                  </TableCell>
+                                ))}
+
+                                {/* Calculated Values - Only for RAR */}
+                                {sector === 'RAR' && (
+                                  <TableCell className="text-right">
+                                    {entry._closeRate > 0 ? (
+                                      <Badge
+                                        variant={entry._closeRate >= 20 ? 'default' : 'secondary'}
+                                        className={entry._closeRate >= 20 ? 'bg-success' : ''}
+                                      >
+                                        {entry._closeRate.toFixed(1)}%
+                                      </Badge>
+                                    ) : '-'}
+                                  </TableCell>
+                                )}
+
+                                {/* Actions */}
+                                <TableCell className="text-right sticky right-0 bg-background z-10 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.1)]">
+                                  <div className="flex justify-end gap-2">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                      onClick={() => handleEditClick(entry)}
+                                      title="Edit Entry"
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                          title="Delete Entry"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>Delete this entry?</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            Are you sure you want to delete the entry for <span className="font-medium">{entry.userName}</span> on <span className="font-medium">{format(new Date(entry.date + 'T00:00:00'), 'MMM d, yyyy')}</span>?
+                                            This action cannot be undone.
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                          <AlertDialogAction
+                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                            onClick={() => handleDelete(entry)}
+                                          >
+                                            Delete
+                                          </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                            {processedEntries.length === 0 && (
+                              <TableRow>
+                                <TableCell colSpan={sectorKpis.length + (isAdmin ? 3 : 2) + (sector === 'RAR' ? 1 : 0)} className="text-center h-24 text-muted-foreground">
+                                  No entries found for the selected period.
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </TabsContent>
+                  )
+                })}
+              </Tabs>
             )}
           </CardContent>
         </Card>
