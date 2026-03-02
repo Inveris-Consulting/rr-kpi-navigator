@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 import AddKPI from "./pages/AddKPI";
 import History from "./pages/History";
 import JobCosts from "./pages/JobCosts";
+import KPIManagement from "./pages/admin/KPIManagement";
 
 import NotFound from "./pages/NotFound";
 
@@ -56,7 +57,8 @@ const AppRoutes = () => {
           <Login />
         </PublicRoute>
       } />
-      <Route path="/" element={
+      <Route path="/" element={<Navigate to="/dashboard/overview" replace />} />
+      <Route path="/dashboard/:section" element={
         <ProtectedRoute>
           <Dashboard />
         </ProtectedRoute>
@@ -74,6 +76,11 @@ const AppRoutes = () => {
       <Route path="/job-costs" element={
         <ProtectedRoute adminOnly>
           <JobCosts />
+        </ProtectedRoute>
+      } />
+      <Route path="/kpi-management" element={
+        <ProtectedRoute adminOnly>
+          <KPIManagement />
         </ProtectedRoute>
       } />
 

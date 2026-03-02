@@ -1,15 +1,29 @@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { users } from '@/lib/mockData';
+
+interface User {
+  id: string;
+  name: string;
+  role: string;
+}
+
+interface Client {
+  id: string;
+  name: string;
+}
 
 interface FilterBarProps {
   selectedPeriod: string;
   onPeriodChange: (period: string) => void;
   selectedUser: string;
   onUserChange: (userId: string) => void;
+  selectedClient: string;
+  onClientChange: (clientId: string) => void;
   groupBy: 'day' | 'week' | 'month';
   onGroupByChange: (group: 'day' | 'week' | 'month') => void;
   showUserFilter?: boolean;
+  users?: User[];
+  clients?: Client[];
 }
 
 const FilterBar = ({
@@ -17,9 +31,13 @@ const FilterBar = ({
   onPeriodChange,
   selectedUser,
   onUserChange,
+  selectedClient,
+  onClientChange,
   groupBy,
   onGroupByChange,
   showUserFilter = true,
+  users = [],
+  clients = [],
 }: FilterBarProps) => {
   const periods = [
     { value: '7', label: '7 Days' },
@@ -34,8 +52,8 @@ const FilterBar = ({
         <Tabs value={selectedPeriod} onValueChange={onPeriodChange}>
           <TabsList className="bg-secondary/50">
             {periods.map((period) => (
-              <TabsTrigger 
-                key={period.value} 
+              <TabsTrigger
+                key={period.value}
                 value={period.value}
                 className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
               >
@@ -55,6 +73,21 @@ const FilterBar = ({
             <SelectItem value="day">By Day</SelectItem>
             <SelectItem value="week">By Week</SelectItem>
             <SelectItem value="month">By Month</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={selectedClient} onValueChange={onClientChange}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Select context" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Contexts</SelectItem>
+            <SelectItem value="general">General (Internal)</SelectItem>
+            {clients.map((client) => (
+              <SelectItem key={client.id} value={client.id}>
+                {client.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
 

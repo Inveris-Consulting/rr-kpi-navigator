@@ -25,9 +25,18 @@ interface KPIChartProps {
   series: ChartSeries[];
   type?: 'line' | 'bar';
   showLegend?: boolean;
+  currencyFormat?: boolean;
 }
 
-const KPIChart = ({ data, title, series, type = 'line', showLegend = true }: KPIChartProps) => {
+const formatTooltipValue = (value: any, _name: string, _props: any, isCurrency: boolean) => {
+  if (typeof value !== 'number') return value;
+  if (isCurrency) {
+    return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
+};
+
+const KPIChart = ({ data, title, series, type = 'line', showLegend = true, currencyFormat = false }: KPIChartProps) => {
   const formattedData = useMemo(() => {
     return data.map(d => ({
       ...d,
@@ -37,6 +46,9 @@ const KPIChart = ({ data, title, series, type = 'line', showLegend = true }: KPI
       }),
     }));
   }, [data]);
+
+  const tooltipFormatter = (value: any, name: string, props: any) =>
+    formatTooltipValue(value, name, props, currencyFormat);
 
   const renderChart = () => {
     const commonProps = {
@@ -52,6 +64,7 @@ const KPIChart = ({ data, title, series, type = 'line', showLegend = true }: KPI
           <YAxis className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
           <Tooltip
             cursor={{ fill: 'hsl(var(--muted)/0.5)' }}
+            formatter={tooltipFormatter}
             contentStyle={{
               backgroundColor: 'hsl(var(--card))',
               border: '1px solid hsl(var(--border))',
@@ -72,6 +85,7 @@ const KPIChart = ({ data, title, series, type = 'line', showLegend = true }: KPI
         <XAxis dataKey="dateFormatted" className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
         <YAxis className="text-xs" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
         <Tooltip
+          formatter={tooltipFormatter}
           contentStyle={{
             backgroundColor: 'hsl(var(--card))',
             border: '1px solid hsl(var(--border))',
@@ -112,3 +126,4 @@ const KPIChart = ({ data, title, series, type = 'line', showLegend = true }: KPI
 };
 
 export default KPIChart;
+

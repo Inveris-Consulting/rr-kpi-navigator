@@ -7,7 +7,8 @@ import {
   ClipboardList,
   LogOut,
   Users,
-  DollarSign
+  DollarSign,
+  Settings
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import logoWhite from '@/assets/rr_logo_white.webp';
@@ -17,17 +18,18 @@ const Sidebar = () => {
   const location = useLocation();
 
   const navItems = [
-    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/dashboard/overview', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/add-kpi', label: 'Add KPI Entry', icon: Plus },
     { path: '/history', label: 'View History', icon: ClipboardList },
     { path: '/job-costs', label: 'Job Costs', icon: DollarSign, adminOnly: true },
+    { path: '/kpi-management', label: 'KPI Management', icon: Settings, adminOnly: true },
   ];
 
   return (
     <aside className="w-64 h-screen sticky top-0 gradient-sidebar flex flex-col shrink-0">
       {/* Logo */}
       <div className="p-6 border-b border-sidebar-border">
-        <Link to="/" className="flex items-center gap-3">
+        <Link to="/dashboard/overview" className="flex items-center gap-3">
           <img
             src={logoWhite}
             alt="Rent and Recruit"
@@ -45,7 +47,9 @@ const Sidebar = () => {
       <nav className="flex-1 p-4 space-y-1">
         {navItems.map((item) => {
           if (item.adminOnly && !isAdmin) return null;
-          const isActive = location.pathname === item.path;
+          const isActive = item.path.startsWith('/dashboard')
+            ? location.pathname.startsWith('/dashboard')
+            : location.pathname === item.path;
           return (
             <Link
               key={item.path}
