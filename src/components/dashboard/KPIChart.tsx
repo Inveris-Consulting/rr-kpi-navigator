@@ -38,13 +38,23 @@ const formatTooltipValue = (value: any, _name: string, _props: any, isCurrency: 
 
 const KPIChart = ({ data, title, series, type = 'line', showLegend = true, currencyFormat = false }: KPIChartProps) => {
   const formattedData = useMemo(() => {
-    return data.map(d => ({
-      ...d,
-      dateFormatted: new Date(d.date).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric'
-      }),
-    }));
+    return data.map(d => {
+      if (d.dateFormatted) return d; // Respect pre-formatted dates
+      if (!d.date) {
+        return {
+          ...d,
+          dateFormatted: d.monthLabel || d.month || d.name || ''
+        };
+      }
+      const dObj = new Date(d.date);
+      return {
+        ...d,
+        dateFormatted: isNaN(dObj.getTime()) ? d.date : dObj.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric'
+        }),
+      };
+    });
   }, [data]);
 
   const tooltipFormatter = (value: any, name: string, props: any) =>

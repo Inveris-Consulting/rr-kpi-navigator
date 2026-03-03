@@ -8,7 +8,7 @@ import RecentEntries from '@/components/dashboard/RecentEntries';
 import FilterBar from '@/components/dashboard/FilterBar';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { useClients, useJobs, useJobReceipts, useJobPayments, useEmployeeCostPeriods } from '@/hooks/useOperationalCosts';
+import { useClients, useJobs, useJobReceipts, useJobPayments, useMonthlyEmployeeExpenses } from '@/hooks/useOperationalCosts';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format } from 'date-fns';
 import {
@@ -153,7 +153,7 @@ const Dashboard = () => {
   const { data: jobs, isLoading: isLoadingJobs } = useJobs();
   const { data: jobReceipts, isLoading: isLoadingReceipts } = useJobReceipts();
   const { data: jobPayments, isLoading: isLoadingPayments } = useJobPayments();
-  const { data: employeePeriods, isLoading: isLoadingEmployees } = useEmployeeCostPeriods();
+  const { data: employeeExpenses, isLoading: isLoadingEmployees } = useMonthlyEmployeeExpenses();
 
   // 3. Compute Stats Dynamically
   const stats = useMemo(() => {
@@ -346,12 +346,12 @@ const Dashboard = () => {
     const pStart = periodStartDate.substring(0, 7);
     const pEnd = periodEndDate.substring(0, 7);
 
-    employeePeriods?.forEach(ep => {
-      const monthStr = ep.start_date?.substring(0, 7);
+    employeeExpenses?.forEach(ep => {
+      const monthStr = ep.month_date?.substring(0, 7);
       if (!monthStr) return;
       if (monthStr < pStart || monthStr > pEnd) return;
       if (!map.has(monthStr)) map.set(monthStr, { month: monthStr, employeeCosts: 0, opsCosts: 0, openJobs: 0 });
-      map.get(monthStr)!.employeeCosts += (Number(ep.hourly_rate) * Number(ep.working_hours || 160));
+      map.get(monthStr)!.employeeCosts += Number(ep.total_amount || 0);
     });
 
     jobPayments?.forEach(pm => {
@@ -379,12 +379,14 @@ const Dashboard = () => {
       row.totalCost = row.employeeCosts + row.opsCosts;
       row.costPerJob = activeCount > 0 ? row.totalCost / activeCount : row.totalCost;
 
-      const date = new Date(`${row.month}-02`);
-      row.monthLabel = date.toLocaleString('default', { month: 'short', year: 'numeric' });
+      // FIX: Ensure valid date parsing for 'YYYY-MM' strings
+      const [year, month] = row.month.split('-');
+      const date = new Date(parseInt(year), parseInt(month) - 1, 1);
+      row.monthLabel = format(date, 'MMM yyyy');
     });
 
     return sortedMonths;
-  }, [employeePeriods, jobPayments, jobs, selectedClient, periodStartDate, periodEndDate]);
+  }, [employeeExpenses, jobPayments, jobs, selectedClient, periodStartDate, periodEndDate]);
 
   const periodLabel = useMemo(() => {
     const days = parseInt(selectedPeriod);
@@ -406,20 +408,30 @@ const Dashboard = () => {
     const allocation: any[] = [];
     jobs?.forEach(job => {
       if (selectedClient !== 'all' && job.client_id !== selectedClient) return;
-      const jobMonth = job.job_date?.substring(0, 7) || job.start_date?.substring(0, 7);
-      if (!jobMonth) return;
-      const monthData = jobCostsBreakdown.find(m => m.month === jobMonth);
-      const allocatedCost = monthData ? monthData.costPerJob : 0;
 
-      if (monthData) {
+      const jobStart = job.job_date?.substring(0, 7) || job.start_date?.substring(0, 7);
+      const jobEnd = job.end_date?.substring(0, 7) || '9999-99';
+      if (!jobStart) return;
+
+      let totalAllocatedCost = 0;
+      let activeInPeriod = false;
+
+      jobCostsBreakdown.forEach(monthData => {
+        if (jobStart <= monthData.month && jobEnd >= monthData.month) {
+          totalAllocatedCost += monthData.costPerJob;
+          activeInPeriod = true;
+        }
+      });
+
+      if (activeInPeriod && totalAllocatedCost > 0) {
         allocation.push({
           date: job.job_date || job.start_date,
           jobName: job.job_title,
-          allocatedCost
+          allocatedCost: totalAllocatedCost
         });
       }
     });
-    return allocation.sort((a, b) => b.date.localeCompare(a.date));
+    return allocation.sort((a, b) => b.allocatedCost - a.allocatedCost);
   }, [jobs, jobCostsBreakdown, selectedClient]);
 
   const clientOverviewData = useMemo(() => {
@@ -722,7 +734,7 @@ const Dashboard = () => {
                 <div className="h-[400px]">
                   <KPIChart
                     title="Monthly Cost Evolution"
-                    data={jobCostsBreakdown}
+                    data={jobCostsBreakdown.map(d => ({ ...d, dateFormatted: d.monthLabel }))}
                     currencyFormat
                     series={[
                       { key: 'employeeCosts', name: 'Employee Costs', color: 'hsl(var(--chart-1))' },
@@ -733,7 +745,7 @@ const Dashboard = () => {
                 <div className="h-[400px]">
                   <KPIChart
                     title="Cost Per Job Trend"
-                    data={jobCostsBreakdown}
+                    data={jobCostsBreakdown.map(d => ({ ...d, dateFormatted: d.monthLabel }))}
                     currencyFormat
                     series={[
                       { key: 'costPerJob', name: 'Cost Per Job', color: 'hsl(var(--chart-3))' }

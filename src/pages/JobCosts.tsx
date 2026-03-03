@@ -21,7 +21,7 @@ const JobCosts = () => {
                     <div>
                         <h2 className="text-3xl font-bold tracking-tight">Job Costs Operations</h2>
                         <p className="text-muted-foreground">
-                            Manage clients, jobs, receipts, payments, and allocate employee costs.
+                            Manage clients, jobs, receipts, payments, and record employees payments.
                         </p>
                     </div>
                     <div className="w-64">
@@ -45,7 +45,7 @@ const JobCosts = () => {
                         <TabsTrigger value="jobs">Jobs</TabsTrigger>
                         <TabsTrigger value="receipts">Customer Receipts</TabsTrigger>
                         <TabsTrigger value="payments">Platform Payments</TabsTrigger>
-                        <TabsTrigger value="employees">Employee Allocation</TabsTrigger>
+                        <TabsTrigger value="employees">Employees Payment</TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="clients" className="space-y-4 bg-card p-6 rounded-xl border">

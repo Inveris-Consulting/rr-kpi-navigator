@@ -49,14 +49,10 @@ export interface JobPayment {
     clients?: { name: string };
 }
 
-export interface EmployeeCostPeriod {
+export interface MonthlyEmployeeExpense {
     id: string;
-    user_id: string;
-    start_date: string;
-    end_date: string | null;
-    hourly_rate: number;
-    working_hours: number;
-    users?: { name: string };
+    month_date: string;
+    total_amount: number;
 }
 
 // Hooks
@@ -105,13 +101,13 @@ export const useJobPayments = () => {
     });
 };
 
-export const useEmployeeCostPeriods = () => {
+export const useMonthlyEmployeeExpenses = () => {
     return useQuery({
-        queryKey: ['employee_cost_periods'],
+        queryKey: ['monthly_employee_expenses'],
         queryFn: async () => {
-            const { data, error } = await supabase.from('employee_cost_periods').select('*, users(name)').order('start_date', { ascending: false });
+            const { data, error } = await supabase.from('monthly_employee_expenses').select('*').order('month_date', { ascending: false });
             if (error) throw error;
-            return data as EmployeeCostPeriod[];
+            return data as MonthlyEmployeeExpense[];
         },
     });
 };
@@ -162,6 +158,6 @@ const createMutation = <T>(table: string, queryKey: string) => {
 export const useJobMutations = createMutation<Job>('jobs', 'jobs');
 export const useReceiptMutations = createMutation<JobReceipt>('job_receipts', 'job_receipts');
 export const usePaymentMutations = createMutation<JobPayment>('job_payments', 'job_payments');
-export const useEmployeeCostPeriodMutations = createMutation<EmployeeCostPeriod>('employee_cost_periods', 'employee_cost_periods');
+export const useMonthlyEmployeeExpenseMutations = createMutation<MonthlyEmployeeExpense>('monthly_employee_expenses', 'monthly_employee_expenses');
 export const useClientMutations = createMutation<Client>('clients', 'clients');
 

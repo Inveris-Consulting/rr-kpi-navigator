@@ -1,31 +1,27 @@
 import React, { useState, useMemo } from 'react';
-import { useJobs, useJobCosts, useEmployeesWithRates, Job } from '@/hooks/useCosts';
+import { useJobs, useJobCosts, Job } from '@/hooks/useCosts';
+import { useMonthlyEmployeeExpenses } from '@/hooks/useOperationalCosts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { format, subMonths, startOfMonth, endOfMonth, eachMonthOfInterval, isSameMonth, parseISO } from 'date-fns';
 import { Loader2, DollarSign, Briefcase } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AdjustedHoursMap } from '@/pages/JobCosts';
 
-interface Props {
-    adjustedHours: AdjustedHoursMap;
-}
-
-const CostOverview = ({ adjustedHours }: Props) => {
+const CostOverview = () => {
     const [timeRange, setTimeRange] = useState('6months');
     const [selectedMonth, setSelectedMonth] = useState<string>(format(new Date(), 'yyyy-MM'));
 
     // Fetch all data
     const { data: jobs, isLoading: isJobsLoading } = useJobs();
     const { data: jobCosts, isLoading: isJobCostsLoading } = useJobCosts();
-    const { data: employees, isLoading: isEmployeesLoading } = useEmployeesWithRates();
+    const { data: employeesExpenses, isLoading: isEmployeesLoading } = useMonthlyEmployeeExpenses();
 
     const isLoading = isJobsLoading || isJobCostsLoading || isEmployeesLoading;
-    const isError = !jobs || !jobCosts || !employees;
+    const isError = !jobs || !jobCosts || !employeesExpenses;
 
     const formattedData = useMemo(() => {
-        if (!jobs || !jobCosts || !employees) return [];
+        if (!jobs || !jobCosts || !employeesExpenses) return [];
 
         let startDate: Date;
         let endDate: Date;
@@ -47,11 +43,10 @@ const CostOverview = ({ adjustedHours }: Props) => {
 
             // 1. Calculate Employee Costs
             let totalEmployeeCost = 0;
-            employees.forEach(emp => {
-                const adjustments = adjustedHours[monthStr] || {};
-                const hours = adjustments[emp.user_id] ?? 173.2;
-                totalEmployeeCost += (hours * emp.hourly_rate);
-            });
+            const expenseForMonth = employeesExpenses.find(e => isSameMonth(parseISO(e.month_date), month));
+            if (expenseForMonth) {
+                totalEmployeeCost = expenseForMonth.total_amount;
+            }
 
             // 2. Calculate Job Costs (Operational)
             let totalJobCosts = 0;
@@ -89,7 +84,7 @@ const CostOverview = ({ adjustedHours }: Props) => {
             };
         });
 
-    }, [jobs, jobCosts, employees, timeRange, selectedMonth, adjustedHours]);
+    }, [jobs, jobCosts, employeesExpenses, timeRange, selectedMonth]);
 
     const aggregatedData = useMemo(() => {
         if (formattedData.length === 0) return { total_cost: 0, cost_per_job: 0, open_jobs_count: 0 };
@@ -171,9 +166,8 @@ const CostOverview = ({ adjustedHours }: Props) => {
                                     const monthStr = format(date, 'yyyy-MM-01');
                                     // Check if we have cost data or adjustment data for this month
                                     const hasJobCosts = jobCosts?.some(c => isSameMonth(parseISO(c.cost_date), date));
-                                    const hasAdjustments = adjustedHours && adjustedHours[monthStr] && Object.keys(adjustedHours[monthStr]).length > 0;
                                     const isCurrentMonth = isSameMonth(date, new Date());
-                                    return hasJobCosts || hasAdjustments || isCurrentMonth;
+                                    return hasJobCosts || isCurrentMonth;
                                 }).map(date => {
                                     const value = format(date, 'yyyy-MM');
                                     const label = format(date, 'MMMM yyyy'); // English default
@@ -234,7 +228,7 @@ const CostOverview = ({ adjustedHours }: Props) => {
                     </CardHeader>
                     <CardContent className="h-[300px]">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={formattedData}>
+                            <BarChart data={formattedData.map(d => ({ ...d, month: d.month }))}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="month" />
                                 <YAxis />
@@ -253,7 +247,7 @@ const CostOverview = ({ adjustedHours }: Props) => {
                     </CardHeader>
                     <CardContent className="h-[300px]">
                         <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={formattedData}>
+                            <LineChart data={formattedData.map(d => ({ ...d, month: d.month }))}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="month" />
                                 <YAxis />
@@ -314,29 +308,28 @@ const JobAllocationTable = ({ costData }: { costData: any[] }) => {
 
         return jobs.map(job => {
             const jDateStr = job.job_date || (job as any).start_date;
+            const jEndDateStr = job.end_date || '9999-99-99';
             if (!jDateStr) return { ...job, totalAllocatedCost: 0 };
 
             try {
-                const jStart = parseISO(jDateStr);
+                const jobStartMon = jDateStr.substring(0, 7);
+                const jobEndMon = jEndDateStr.substring(0, 7);
 
-                // Find the month data corresponding to job start date
-                const monthStat = costData.find(m => isSameMonth(parseISO(m.month_date), jStart));
+                let totalAllocatedCost = 0;
+                let activeInPeriod = false;
 
-                if (!monthStat) return { ...job, totalAllocatedCost: 0 };
-
-                // "Jobs in the month" - definition: Jobs starting in that month?
-                // Based on user request: "dividido pela quantidade de jobs no MÊS".
-                // If we assume the table shows acquisition cost, we count jobs starting in that month.
-                // However, costData.open_jobs_count currently counts ACTIVE jobs.
-                // If the user wants strictly "started in month", we need to recount.
-                // But typically "cost per job" metrics use the active pool.
-                // Let's stick to the metric already calculated in formattedData for consistency: 'cost_per_job'
-                // which is Total Cost / Open Jobs.
-                // So we just assign that month's unit cost to this job.
+                costData.forEach(monthStat => {
+                    // costData month_date format is YYYY-MM-DD
+                    const statMonth = monthStat.month_date.substring(0, 7);
+                    if (jobStartMon <= statMonth && jobEndMon >= statMonth) {
+                        totalAllocatedCost += monthStat.cost_per_job;
+                        activeInPeriod = true;
+                    }
+                });
 
                 return {
                     ...job,
-                    totalAllocatedCost: monthStat.cost_per_job
+                    totalAllocatedCost: activeInPeriod ? totalAllocatedCost : 0
                 };
 
             } catch (e) {
@@ -345,7 +338,7 @@ const JobAllocationTable = ({ costData }: { costData: any[] }) => {
             }
         })
             .filter(j => j.totalAllocatedCost > 0) // Filter out jobs outside the range
-            .sort((a, b) => new Date(b.job_date).getTime() - new Date(a.job_date).getTime());
+            .sort((a, b) => b.totalAllocatedCost - a.totalAllocatedCost); // Sort by highest cost
     }, [jobs, costData]);
 
     return (
