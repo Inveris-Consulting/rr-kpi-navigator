@@ -232,6 +232,7 @@ const AddKPI = () => {
       await Promise.all(promises);
 
       toast.success('KPI Entry Saved!');
+      handleReset();
       // Update local submitted states to show dynamic "pending" remove
       if (context !== 'general' && !submittedClientIds.includes(context)) {
         setSubmittedClientIds(prev => [...prev, context]);
