@@ -15,6 +15,9 @@ import { CalendarIcon, Save, RotateCcw, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import { useClients } from '@/hooks/useOperationalCosts';
+import { taskService } from '@/lib/taskService';
+import { KPIBlockedStatus } from '@/lib/taskTypes';
+import { KPIBlockWarning } from '@/components/tasks/KPIBlockWarning';
 
 interface KPIDefinition {
   id: string;
@@ -39,6 +42,9 @@ const AddKPI = () => {
   const [existingEntries, setExistingEntries] = useState<Record<string, string>>({});
   const [submittedClientIds, setSubmittedClientIds] = useState<string[]>([]);
 
+  const [blockedStatus, setBlockedStatus] = useState<KPIBlockedStatus>({ isBlocked: false, unresolvedCount: 0, pendingTasks: [] });
+  const [isCheckingBlock, setIsCheckingBlock] = useState(true);
+
   const activeClients = useMemo(() => clients?.filter(c => c.is_active) || [], [clients]);
 
   // Helper: map sector name to client flag
@@ -49,6 +55,22 @@ const AddKPI = () => {
     if (s === 'rar') return client.is_rar;
     return false;
   };
+
+  // Check if KPI submission is blocked by required tasks
+  useEffect(() => {
+    const checkBlock = async () => {
+      if (!user) return;
+      try {
+        const status = await taskService.checkKPIBlockedStatus(user.id);
+        setBlockedStatus(status);
+      } catch (e) {
+        console.error('Failed to check KPI blocked status', e);
+      } finally {
+        setIsCheckingBlock(false);
+      }
+    };
+    checkBlock();
+  }, [user]);
 
   // Fetch user's allowed KPIs
   useEffect(() => {
@@ -273,6 +295,11 @@ const AddKPI = () => {
           </div>
         )}
 
+        {isCheckingBlock ? (
+          <div className="py-12 text-center text-muted-foreground animate-pulse">Checking task requirements...</div>
+        ) : blockedStatus.isBlocked ? (
+          <KPIBlockWarning status={blockedStatus} />
+        ) : (
         <Card className="animate-fade-in relative">
           {isLoadingEntry && (
             <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-10 flex items-center justify-center rounded-lg">
@@ -399,6 +426,7 @@ const AddKPI = () => {
             )}
           </CardContent>
         </Card>
+        )}
       </div>
     </MainLayout>
   );

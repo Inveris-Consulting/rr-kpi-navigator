@@ -8,7 +8,8 @@ import {
   LogOut,
   Users,
   DollarSign,
-  Settings
+  Settings,
+  CheckSquare
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import logoWhite from '@/assets/rr_logo_white.webp';
@@ -20,6 +21,7 @@ const Sidebar = () => {
   const navItems = [
     { path: '/dashboard/overview', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/add-kpi', label: 'Add KPI Entry', icon: Plus },
+    { path: '/tasks', label: 'Recruiting Tasks', icon: CheckSquare },
     { path: '/history', label: 'View History', icon: ClipboardList },
     { path: '/job-costs', label: 'Job Costs', icon: DollarSign, adminOnly: true },
     { path: '/kpi-management', label: 'KPI Management', icon: Settings, adminOnly: true },

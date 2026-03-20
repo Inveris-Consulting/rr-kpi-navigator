@@ -10,6 +10,7 @@ import AddKPI from "./pages/AddKPI";
 import History from "./pages/History";
 import JobCosts from "./pages/JobCosts";
 import KPIManagement from "./pages/admin/KPIManagement";
+import RecruitingTaskManagement from "./pages/RecruitingTaskManagement";
 
 import NotFound from "./pages/NotFound";
 
@@ -76,6 +77,11 @@ const AppRoutes = () => {
       <Route path="/job-costs" element={
         <ProtectedRoute adminOnly>
           <JobCosts />
+        </ProtectedRoute>
+      } />
+      <Route path="/tasks" element={
+        <ProtectedRoute>
+          <RecruitingTaskManagement />
         </ProtectedRoute>
       } />
       <Route path="/kpi-management" element={
